@@ -65,10 +65,28 @@ def drive(left, right, reverse):
         l1.start(left)
         r1.start(right)
 
+# reverse and do a turn.
+def processTurn(left):
+    drive(70, 70, True)
+    time.sleep(2)
+    if left:
+        drive(70, 25, False)
+    else:
+        drive(25, 70, False)
+    time.sleep(2)
+
 try:
     while True:
-        drive(75, 75, False)
-        print(round(distance(0)))
+        if distance(0) < 10:
+            drive(0, 0, False)
+            ld = distance(2)
+            rd = distance(1)
+            if ld > rd and ld > 20:
+                processTurn(True)
+            elif rd > ld and rd > 20:
+                processTurn(False)
+        else:
+            drive(70, 70, False)
         time.sleep(1)
 
 except KeyboardInterrupt:
