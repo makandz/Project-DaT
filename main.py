@@ -14,8 +14,15 @@ GP_DISTANCE = [
     # TRIG, ECHO
     [2, 3], # front
     [4, 14], # right
-    [15, 18] # left
+    [15, 18], # left
+    [24, 10], # front left
+    [9, 25] # front right
 ]
+
+BRAKE_LED = 11
+
+# set led mode
+GPIO.setup(BRAKE_LED, GPIO.OUT)
 
 # set motor mode
 for a in GP_MOTOR:
@@ -71,34 +78,38 @@ def processTurn(left):
     drive(70, 70, True)
     time.sleep(0.5)
     if left:
-        drive(70, 25, False)
+        drive(75, 25, False)
     else:
-        drive(25, 70, False)
-    time.sleep(0.8)
+        drive(25, 75, False)
+    time.sleep(0.5)
 
-# for testing
 drive(0, 0, False)
-time.sleep(5)
+time.sleep(2)
 
 try:
     while True:
-        ld = distance(2)
-        rd = distance(1)
-        if distance(0) < 10:
-            drive(0, 0, False)
-            if ld > rd and ld > 20:
+        GPIO.output(BRAKE_LED, True)
+        if distance(0) < 15:
+            ld = distance(2)
+            rd = distance(1)
+            if ld > rd and ld > 30:
                 processTurn(True)
-            elif rd > ld and rd > 20:
+            elif rd > ld and rd > 30:
                 processTurn(False)
+            else:
+                drive(0, 0, False)
         else:
-            if ld < 20:
-                push = (20 - ld) * 2
-                drive(35, 40 + push, False)
-            elif distance(1) < 20:
-                push = (20 - rd) * 2
-                drive(40 + push, 35, False)
+            f_ld = distance(3)
+            f_rd = distance(4)
+            if f_ld < 25:
+                push = (25 - f_ld) * 2
+                drive(30, 50 + push, False)
+            elif f_rd < 25:
+                push = (25 - f_rd) * 2
+                drive(50 + push, 30, False)
             else:
                 drive(70, 70, False)
+        GPIO.output(BRAKE_LED, False)
         time.sleep(0.5)
 
 except KeyboardInterrupt:
