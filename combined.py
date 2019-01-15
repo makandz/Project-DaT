@@ -11,6 +11,8 @@
 # Feel free to use any part of this code to make your own.
 # ----------BEGIN THE CODE!---------------------------------
 
+tick = 0
+
 # Configuration
 GP_MOTOR = [ # Motors (OUT1, OUT2)
     [17, 27],
@@ -26,16 +28,27 @@ GP_DISTANCE = [ # Distance sensors (TRIG, ECHO)
 ]
 
 BACK_LED = 11 # Debugging or stopping.
-USE_AI = False # For debugging
-IM_WIDTH = 1280 # Camera x
-IM_HEIGHT = 720 # Camera Y
+USE_AI = True # For debugging
+IM_WIDTH = 1024 # Camera x
+IM_HEIGHT = 512 # Camera Y
 
 # Required libraries
 import RPi.GPIO as GPIO
 import time
+from picamera.array import PiRGBArray
+from picamera import PiCamera
+import cv2
+
+# Stop sign data
+STOP = [
+    False, # begin count, seen
+    0, # seconds stopped + grace period
+]
+
+GPIO.setmode(GPIO.BCM)
 
 # set led mode
-GPIO.setup(BRAKE_LED, GPIO.OUT)
+GPIO.setup(BACK_LED, GPIO.OUT)
 
 # set motor mode
 for a in GP_MOTOR:
@@ -43,10 +56,10 @@ for a in GP_MOTOR:
     GPIO.setup(a[1], GPIO.OUT)
 
 # turn them into PWM
-l1 = GPIO.PWM(a[0][0], 50)
-l2 = GPIO.PWM(a[0][1], 50)
-r1 = GPIO.PWM(a[1][0], 50)
-r2 = GPIO.PWM(a[1][1], 50)
+l1 = GPIO.PWM(GP_MOTOR[0][0], 50)
+l2 = GPIO.PWM(GP_MOTOR[0][1], 50)
+r1 = GPIO.PWM(GP_MOTOR[1][0], 50)
+r2 = GPIO.PWM(GP_MOTOR[1][1], 50)
 
 # set distance mode
 for a in GP_DISTANCE:
@@ -57,10 +70,7 @@ for a in GP_DISTANCE:
 if USE_AI:
     # Required libraries for AI
     import os
-    import cv2
     import numpy as np
-    from picamera.array import PiRGBArray
-    from picamera import PiCamera
     import tensorflow as tf
     import argparse
     import sys
@@ -98,8 +108,14 @@ if USE_AI:
     detection_classes = detection_graph.get_tensor_by_name('detection_classes:0') # what it detects
     num_detections = detection_graph.get_tensor_by_name('num_detections:0') # Number of objects detected
 
+frame_rate_calc = 1
+freq = cv2.getTickFrequency()
+font = cv2.FONT_HERSHEY_SIMPLEX
+
 # Stop detection function
 def stop_detector(frame):
+    global STOP # transfer data
+
     frame_expanded = np.expand_dims(frame, axis = 0)
 
     # Perform the actual detection by running the model with the image as input
@@ -121,9 +137,9 @@ def stop_detector(frame):
         # Location of detected object
         x = int(((boxes[0][0][1]+boxes[0][0][3])/2) * IM_WIDTH)
         y = int(((boxes[0][0][0]+boxes[0][0][2])/2) * IM_HEIGHT)
-
         cv2.circle(frame,(x,y), 5, (75, 13, 180), -1) # Draw a circle at center of object
-
+        print("I see stop sign")
+        STOP[0] = True
     return frame
 
 # Calculates the distance
@@ -171,29 +187,20 @@ def processTurn(left):
     time.sleep(0.5) # time for turn to complete
 
 # Camera setup
-if USE_AI:
-    camera = PiCamera()
-    camera.resolution = (IM_WIDTH,IM_HEIGHT)
-    camera.framerate = 10
-    rawCapture = PiRGBArray(camera, size=(IM_WIDTH,IM_HEIGHT))
-    rawCapture.truncate(0)
-
-# Capture a frame for detection
-def frame_capture():
-    t1 = cv2.getTickCount()
-    frame = frame1.array
-    frame.setflags(write = 1)
-    frame = stop_detector(frame)
-    cv2.imshow('Object detector', frame)
-    rawCapture.truncate(0)
+camera = PiCamera()
+camera.resolution = (IM_WIDTH, IM_HEIGHT)
+camera.framerate = 10
+rawCapture = PiRGBArray(camera, size=(IM_WIDTH, IM_HEIGHT))
+rawCapture.truncate(0)
 
 # DEBUGGING
 drive(0, 0, False)
-time.sleep(2)
 
 try:
-    while True: # never ending blackhole
+    for frame1 in camera.capture_continuous(rawCapture, format="bgr", use_video_port = True):
+        tick += 1
         GPIO.output(BACK_LED, True)
+
         # front blocked
         if distance(0) < 15:
             ld = distance(2)
@@ -217,10 +224,46 @@ try:
                 drive(50 + push, 30, False)
             else: # drive straight, nothing wrong.
                 drive(70, 70, False)
+
+        # Stop sign detection
+        t1 = cv2.getTickCount()
+        frame = frame1.array
+        frame.setflags(write = 1)
+
+        if STOP[0]:
+            STOP[1] += 1
+            if STOP[1] < 5: # don't drive for 5 seconds.
+                drive(0, 0, False)
+            elif STOP[1] < 10: # passed grace period
+                STOP[0] = False
+                STOP[1] = 0
+            time.sleep(0.3)
+        elif (tick % 2 == 0) and USE_AI:
+            frame = stop_detector(frame)
+        else:
+            time.sleep(0.3)
+
+        # Draw FPS
+        #cv2.putText(frame,"FPS: {0:.2f}".format(frame_rate_calc),(30,50),font,1,(255,255,0),2,cv2.LINE_AA)
+        cv2.imshow('Object detector', frame)
+
+        # FPS calculation
+        t2 = cv2.getTickCount()
+        time1 = (t2-t1)/freq
+        frame_rate_calc = 1/time1
+
+        if cv2.waitKey(1) == 27: 
+            break  # esc to quit
+
+        rawCapture.truncate(0)
         
         GPIO.output(BACK_LED, False)
-        time.sleep(0.5) # next check in 0.5 seconds.
 
 except KeyboardInterrupt:
     print("Measurement stopped by User")
     GPIO.cleanup()
+    camera.close()
+    cv2.destroyAllWindows()
+
+camera.close()
+cv2.destroyAllWindows()
