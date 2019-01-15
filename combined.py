@@ -244,7 +244,6 @@ try:
             time.sleep(0.3)
 
         # Draw FPS
-        #cv2.putText(frame,"FPS: {0:.2f}".format(frame_rate_calc),(30,50),font,1,(255,255,0),2,cv2.LINE_AA)
         cv2.imshow('Object detector', frame)
 
         # FPS calculation
