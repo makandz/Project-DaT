@@ -1,5 +1,5 @@
 # Project DaT
-This is my grade 12 final project, a self driving car.
+This is my grade 12 computer engineering final project, a self driving car.
 
 ## The goal
 The goal of this project was to make a car that can do the following the things:
